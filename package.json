@@ -1,0 +1,24 @@
+{
+  "name": "arsip-app",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "get-refresh-token": "node scripts/get-refresh-token.js"
+  },
+  "dependencies": {
+    "next": "14.2.35",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "googleapis": "144.0.0",
+    "lucide-react": "0.400.0",
+    "dotenv": "16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "20.14.10",
+    "@types/react": "18.3.3",
+    "typescript": "5.5.3"
+  }
+}
