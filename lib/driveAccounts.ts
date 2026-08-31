@@ -186,6 +186,8 @@ export async function uploadFile(
   const res = await account.client.files.create({
     // convert=true membuat Drive mengubah file Word jadi Google Docs,
     // supaya nanti bisa di-export sebagai PDF tanpa tool tambahan.
+    // (type assertion di sini karena definisi TypeScript googleapis belum
+    // mencantumkan "convert" meski parameter ini valid di Drive API)
     convert: shouldConvert,
     requestBody: {
       name: fileName,
@@ -197,7 +199,7 @@ export async function uploadFile(
       body: Readable.from(buffer),
     },
     fields: "id, name, mimeType, size, createdTime, properties",
-  });
+  } as drive_v3.Params$Resource$Files$Create);
 
   return {
     id: res.data.id!,
