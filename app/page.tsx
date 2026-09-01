@@ -548,7 +548,7 @@ export default function HomePage() {
             <FileText size={20} />
           </div>
           <div>
-            <h1 style={{ fontSize: 23, fontWeight: 700 }}>Arsip</h1>
+            <h1 style={{ fontSize: 23, fontWeight: 700 }}>Arsip Tim Hukum</h1>
             <p style={{ margin: "1px 0 0", fontSize: 13, color: "var(--ink-soft)" }}>
               {files.length} dokumen tersimpan
             </p>
