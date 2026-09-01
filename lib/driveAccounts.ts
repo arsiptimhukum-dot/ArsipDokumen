@@ -333,11 +333,16 @@ export async function previewFile(accountIndex: number, fileId: string) {
   );
   const buffer = Buffer.from(original.data as ArrayBuffer);
 
+  // Cara yang BENAR di Drive API v3: bukan pakai parameter "convert" (itu
+  // peninggalan API v2 dan tidak berfungsi di v3), tapi dengan menentukan
+  // mimeType TUJUAN (Google Docs/Sheets) di requestBody, sementara media
+  // tetap pakai mimeType ASLI file — Drive otomatis mengonversi saat upload.
+  const targetMimeType = EXCEL_MIME_TYPES.has(mimeType) ? GOOGLE_SHEET_MIME : GOOGLE_DOC_MIME;
   const temp = await account.client.files.create({
-    requestBody: { name: `__preview_tmp_${fileId}` },
+    requestBody: { name: `__preview_tmp_${fileId}`, mimeType: targetMimeType },
     media: { mimeType, body: Readable.from(buffer) },
     fields: "id",
-  } as drive_v3.Params$Resource$Files$Create);
+  });
 
   try {
     const pdfRes = await account.client.files.export(
