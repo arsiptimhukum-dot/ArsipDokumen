@@ -12,8 +12,9 @@
   --danger: #8b2942;
   --danger-soft: #f7e8ec;
   --row-alt: #f7f8fa;
+  --selected: #fff6e0;
+  --selected-border: #e0b84a;
 
-  /* palet warna kategori - dipilih otomatis per nama kategori */
   --cat-0: #1e5f5b;
   --cat-1: #8b5e34;
   --cat-2: #3b5ba5;
@@ -123,6 +124,44 @@ table {
 }
 .upload-btn:hover {
   background: var(--accent-dark);
+}
+.upload-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.pagination-btn {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 7px;
+  padding: 6px 11px;
+  font-size: 12px;
+  color: var(--ink);
+}
+.pagination-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.pagination-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spin {
+  animation: spin 0.8s linear infinite;
 }
 
 @media (max-width: 680px) {

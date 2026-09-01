@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { downloadFile } from "@/lib/driveAccounts";
+import { previewFile } from "@/lib/driveAccounts";
 import { isValidSession } from "@/lib/auth";
 
 export const runtime = "nodejs";
@@ -18,17 +18,17 @@ export async function GET(
   }
 
   try {
-    const { name, mimeType, data } = await downloadFile(accountIndex, params.fileId);
+    const { name, data } = await previewFile(accountIndex, params.fileId);
     return new NextResponse(new Uint8Array(data), {
       headers: {
-        "Content-Type": mimeType,
-        "Content-Disposition": `attachment; filename="${encodeURIComponent(name)}"`,
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `inline; filename="${encodeURIComponent(name)}"`,
       },
     });
   } catch (err: any) {
     console.error(err);
     return NextResponse.json(
-      { error: err.message || "Gagal download file" },
+      { error: err.message || "Gagal membuka preview" },
       { status: 500 }
     );
   }

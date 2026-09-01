@@ -37,7 +37,7 @@ const oauth2Client = new google.auth.OAuth2(
 
 const authUrl = oauth2Client.generateAuthUrl({
   access_type: "offline",
-  prompt: "consent", // wajib, supaya selalu dapat refresh_token baru
+  prompt: "consent",
   scope: ["https://www.googleapis.com/auth/drive"],
 });
 
@@ -50,7 +50,6 @@ const rl = readline.createInterface({ input: process.stdin, output: process.stdo
 rl.question("Tempel kode di sini: ", async (rawCode) => {
   rl.close();
 
-  // Jaga-jaga kalau yang ditempel adalah seluruh URL, bukan cuma kodenya
   let code = rawCode.trim();
   const codeMatch = code.match(/[?&]code=([^&\s]+)/);
   if (codeMatch) {
@@ -72,8 +71,6 @@ rl.question("Tempel kode di sini: ", async (rawCode) => {
 
     console.log("\nToken didapat, sedang diuji langsung ke Google Drive...");
 
-    // SELF-TEST: langsung coba pakai token ini persis seperti yang dilakukan aplikasi,
-    // pakai OAuth2Client baru supaya benar-benar menguji refresh_token-nya, bukan access_token sesaat.
     const testClient = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET);
     testClient.setCredentials({ refresh_token: tokens.refresh_token });
     const drive = google.drive({ version: "v3", auth: testClient });

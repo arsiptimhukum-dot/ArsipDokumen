@@ -15,16 +15,30 @@ import { Readable } from "stream";
 
 export const ARCHIVE_FOLDER_NAME = "ArsipPerusahaan";
 export const DEFAULT_CATEGORY = "Tanpa Kategori";
+export const MAX_UPLOAD_SIZE = 5 * 1024 * 1024; // 5MB
 
 const WORD_MIME_TYPES = new Set([
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ]);
+const EXCEL_MIME_TYPES = new Set([
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+]);
 const PDF_MIME_TYPE = "application/pdf";
+
+const GOOGLE_DOC_MIME = "application/vnd.google-apps.document";
+const GOOGLE_SHEET_MIME = "application/vnd.google-apps.spreadsheet";
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
 export const ALLOWED_UPLOAD_MIME_TYPES = new Set([
   ...WORD_MIME_TYPES,
+  ...EXCEL_MIME_TYPES,
   PDF_MIME_TYPE,
 ]);
+
+export type FileKind = "word" | "excel" | "pdf";
 
 export type DriveAccount = {
   index: number;
@@ -96,10 +110,17 @@ async function ensureArchiveFolder(account: DriveAccount): Promise<string> {
   return folder.data.id!;
 }
 
+function kindFromMimeType(mimeType: string): FileKind {
+  if (mimeType === PDF_MIME_TYPE) return "pdf";
+  if (mimeType === GOOGLE_SHEET_MIME || EXCEL_MIME_TYPES.has(mimeType)) return "excel";
+  return "word";
+}
+
 export type ArchiveFile = {
   id: string;
   name: string;
   mimeType: string;
+  kind: FileKind;
   size: string | null;
   createdTime: string;
   category: string;
@@ -121,16 +142,19 @@ export async function listAllFiles(): Promise<ArchiveFile[]> {
           orderBy: "createdTime desc",
           pageSize: 1000,
         });
-        return (res.data.files || []).map((f) => ({
-          id: f.id!,
-          name: f.name!,
-          mimeType: f.mimeType!,
-          size: f.size || null,
-          createdTime: f.createdTime!,
-          category: f.properties?.kategori || DEFAULT_CATEGORY,
-          accountIndex: account.index,
-          accountLabel: account.label,
-        }));
+        return (res.data.files || [])
+          .filter((f) => !f.name?.startsWith("__preview_tmp_"))
+          .map((f) => ({
+            id: f.id!,
+            name: f.name!,
+            mimeType: f.mimeType!,
+            kind: kindFromMimeType(f.mimeType!),
+            size: f.size || null,
+            createdTime: f.createdTime!,
+            category: f.properties?.kategori || DEFAULT_CATEGORY,
+            accountIndex: account.index,
+            accountLabel: account.label,
+          }));
       } catch (err) {
         console.error(`Gagal ambil file dari akun ${account.label}:`, err);
         return [];
@@ -175,20 +199,20 @@ export async function uploadFile(
   category: string
 ): Promise<ArchiveFile> {
   if (!ALLOWED_UPLOAD_MIME_TYPES.has(mimeType)) {
-    throw new Error("Hanya file Word (.doc/.docx) atau PDF yang bisa diunggah");
+    throw new Error("Hanya file Word, Excel, atau PDF yang bisa diunggah");
+  }
+  if (buffer.length > MAX_UPLOAD_SIZE) {
+    throw new Error("File maksimal 5MB");
   }
 
   const account = await pickAccountForUpload();
   const folderId = await ensureArchiveFolder(account);
-  const shouldConvert = WORD_MIME_TYPES.has(mimeType);
   const finalCategory = category?.trim() || DEFAULT_CATEGORY;
 
+  // Disimpan APA ADANYA (tidak dikonversi), supaya nanti diunduh dalam
+  // format asli (docx/xlsx/pdf). Konversi ke PDF cuma dilakukan saat
+  // "Lihat" (preview), lewat salinan sementara — lihat previewFile().
   const res = await account.client.files.create({
-    // convert=true membuat Drive mengubah file Word jadi Google Docs,
-    // supaya nanti bisa di-export sebagai PDF tanpa tool tambahan.
-    // (type assertion di sini karena definisi TypeScript googleapis belum
-    // mencantumkan "convert" meski parameter ini valid di Drive API)
-    convert: shouldConvert,
     requestBody: {
       name: fileName,
       parents: [folderId],
@@ -199,12 +223,13 @@ export async function uploadFile(
       body: Readable.from(buffer),
     },
     fields: "id, name, mimeType, size, createdTime, properties",
-  } as drive_v3.Params$Resource$Files$Create);
+  });
 
   return {
     id: res.data.id!,
     name: res.data.name!,
     mimeType: res.data.mimeType!,
+    kind: kindFromMimeType(res.data.mimeType!),
     size: res.data.size || null,
     createdTime: res.data.createdTime!,
     category: res.data.properties?.kategori || finalCategory,
@@ -213,14 +238,16 @@ export async function uploadFile(
   };
 }
 
-function toPdfFileName(name: string): string {
-  const withoutExt = name.replace(/\.(docx?|pdf)$/i, "");
-  return `${withoutExt}.pdf`;
+function replaceExtension(name: string, newExt: string): string {
+  const withoutExt = name.replace(/\.[^./\\]+$/, "");
+  return `${withoutExt}${newExt}`;
 }
 
 /**
- * Unduh file. Kalau file aslinya Word (sudah dikonversi jadi Google Docs saat
- * upload), di-export sebagai PDF. Kalau aslinya sudah PDF, diunduh langsung.
+ * Unduh file dalam FORMAT ASLINYA:
+ * - File lama yang sempat dikonversi jadi Google Docs/Sheets di-export
+ *   balik jadi .docx / .xlsx.
+ * - File yang disimpan apa adanya (word/excel/pdf) diunduh langsung.
  */
 export async function downloadFile(accountIndex: number, fileId: string) {
   const account = getAccount(accountIndex);
@@ -232,14 +259,26 @@ export async function downloadFile(accountIndex: number, fileId: string) {
   const mimeType = meta.data.mimeType!;
   const name = meta.data.name!;
 
-  if (mimeType.startsWith("application/vnd.google-apps")) {
+  if (mimeType === GOOGLE_DOC_MIME) {
     const res = await account.client.files.export(
-      { fileId, mimeType: PDF_MIME_TYPE },
+      { fileId, mimeType: DOCX_MIME },
       { responseType: "arraybuffer" }
     );
     return {
-      name: toPdfFileName(name),
-      mimeType: PDF_MIME_TYPE,
+      name: replaceExtension(name, ".docx"),
+      mimeType: DOCX_MIME,
+      data: Buffer.from(res.data as ArrayBuffer),
+    };
+  }
+
+  if (mimeType === GOOGLE_SHEET_MIME) {
+    const res = await account.client.files.export(
+      { fileId, mimeType: XLSX_MIME },
+      { responseType: "arraybuffer" }
+    );
+    return {
+      name: replaceExtension(name, ".xlsx"),
+      mimeType: XLSX_MIME,
       data: Buffer.from(res.data as ArrayBuffer),
     };
   }
@@ -253,6 +292,62 @@ export async function downloadFile(accountIndex: number, fileId: string) {
     mimeType,
     data: Buffer.from(res.data as ArrayBuffer),
   };
+}
+
+/**
+ * Ambil versi PDF file ini untuk DILIHAT (preview), tanpa mengubah file
+ * aslinya. Untuk file Word/Excel, dibuat salinan sementara yang dikonversi
+ * ke Google Docs/Sheets, di-export ke PDF, lalu salinan sementaranya dihapus.
+ */
+export async function previewFile(accountIndex: number, fileId: string) {
+  const account = getAccount(accountIndex);
+  const meta = await account.client.files.get({
+    fileId,
+    fields: "name, mimeType",
+  });
+
+  const mimeType = meta.data.mimeType!;
+  const name = meta.data.name!;
+  const pdfName = replaceExtension(name, ".pdf");
+
+  if (mimeType === PDF_MIME_TYPE) {
+    const res = await account.client.files.get(
+      { fileId, alt: "media" },
+      { responseType: "arraybuffer" }
+    );
+    return { name: pdfName, data: Buffer.from(res.data as ArrayBuffer) };
+  }
+
+  if (mimeType === GOOGLE_DOC_MIME || mimeType === GOOGLE_SHEET_MIME) {
+    const res = await account.client.files.export(
+      { fileId, mimeType: PDF_MIME_TYPE },
+      { responseType: "arraybuffer" }
+    );
+    return { name: pdfName, data: Buffer.from(res.data as ArrayBuffer) };
+  }
+
+  // Word/Excel biner: bikin salinan sementara yang dikonversi, export PDF, hapus lagi
+  const original = await account.client.files.get(
+    { fileId, alt: "media" },
+    { responseType: "arraybuffer" }
+  );
+  const buffer = Buffer.from(original.data as ArrayBuffer);
+
+  const temp = await account.client.files.create({
+    requestBody: { name: `__preview_tmp_${fileId}` },
+    media: { mimeType, body: Readable.from(buffer) },
+    fields: "id",
+  } as drive_v3.Params$Resource$Files$Create);
+
+  try {
+    const pdfRes = await account.client.files.export(
+      { fileId: temp.data.id!, mimeType: PDF_MIME_TYPE },
+      { responseType: "arraybuffer" }
+    );
+    return { name: pdfName, data: Buffer.from(pdfRes.data as ArrayBuffer) };
+  } finally {
+    account.client.files.delete({ fileId: temp.data.id! }).catch(() => {});
+  }
 }
 
 export async function deleteFile(accountIndex: number, fileId: string) {

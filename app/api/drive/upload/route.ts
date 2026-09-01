@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { uploadFile } from "@/lib/driveAccounts";
+import { uploadFile, MAX_UPLOAD_SIZE } from "@/lib/driveAccounts";
 import { isValidSession } from "@/lib/auth";
 
 export const runtime = "nodejs";
@@ -17,6 +17,10 @@ export async function POST(req: NextRequest) {
 
     if (!file) {
       return NextResponse.json({ error: "Tidak ada file" }, { status: 400 });
+    }
+
+    if (file.size > MAX_UPLOAD_SIZE) {
+      return NextResponse.json({ error: "File maksimal 5MB" }, { status: 400 });
     }
 
     const arrayBuffer = await file.arrayBuffer();
